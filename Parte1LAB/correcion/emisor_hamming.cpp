@@ -4,6 +4,10 @@
 #include <algorithm>
 #include <random>
 #include <bitset>
+#include <cstring>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 using namespace std;
 
@@ -31,7 +35,6 @@ string textoABinarioASCII(const string& texto) {
 //////////////////////
 // CAPA ENLACE (Hamming)
 //////////////////////
-
 bool esPotenciaDe2(int x) {
     return x && !(x & (x - 1));
 }
@@ -52,12 +55,10 @@ string aplicarHamming(const string& data) {
     vector<char> hamming(n + 1); // índice 1-based
     int j = 0;
 
-    // Insertar bits de datos y reservar posiciones de paridad
     for (int i = 1; i <= n; i++) {
         hamming[i] = esPotenciaDe2(i) ? '0' : data[j++];
     }
 
-    // Calcular paridad
     for (int i = 0; i < r; i++) {
         int pos = pow(2, i);
         int paridad = 0;
@@ -79,7 +80,6 @@ string aplicarHamming(const string& data) {
 //////////////////////
 // CAPA RUIDO
 //////////////////////
-
 string aplicarRuido(const string& trama, double probabilidadError) {
     random_device rd;
     mt19937 gen(rd());
@@ -88,32 +88,67 @@ string aplicarRuido(const string& trama, double probabilidadError) {
     string ruidosa = trama;
     for (char& bit : ruidosa) {
         if (dis(gen) < probabilidadError) {
-            bit = (bit == '0') ? '1' : '0'; // voltear bit
+            bit = (bit == '0') ? '1' : '0';
         }
     }
     return ruidosa;
 }
 
 //////////////////////
-// MAIN - Simulación emisor con capas
+// CAPA TRANSMISIÓN - SOCKET CLIENTE
 //////////////////////
+void enviarTramaPorSocket(const string& trama, const string& ip = "127.0.0.1", int puerto = 5000) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        cerr << "❌ Error al crear el socket\n";
+        return;
+    }
 
-int main() {
-    // CAPA APLICACIÓN
+    sockaddr_in servidor{};
+    servidor.sin_family = AF_INET;
+    servidor.sin_port = htons(puerto);
+    inet_pton(AF_INET, ip.c_str(), &servidor.sin_addr);
+
+    cout << "\n🔌 Conectando al receptor en " << ip << ":" << puerto << "...\n";
+    if (connect(sock, (struct sockaddr*)&servidor, sizeof(servidor)) < 0) {
+        cerr << "❌ Error al conectar con el receptor\n";
+        close(sock);
+        return;
+    }
+
+    send(sock, trama.c_str(), trama.size(), 0);
+    cout << "✅ Trama enviada al receptor con éxito.\n";
+
+    close(sock);
+}
+
+//////////////////////
+// MAIN
+//////////////////////
+int main(int argc, char* argv[]) {
+    int puerto = 5000;
+    if (argc > 1) {
+        puerto = atoi(argv[1]);  // lee el puerto desde la línea de comandos
+    }
+
+    // APLICACIÓN
     string mensaje = capaAplicacion_Emisor();
 
-    // CAPA PRESENTACIÓN
+    // PRESENTACIÓN
     string binario = textoABinarioASCII(mensaje);
     cout << "\n[Presentación] Binario ASCII: " << binario << endl;
 
-    // CAPA ENLACE
+    // ENLACE
     string hamming = aplicarHamming(binario);
     cout << "[Enlace] Trama con Hamming: " << hamming << endl;
 
-    // CAPA RUIDO
-    double probabilidadError = 0.01; // 1% de error
+    // RUIDO
+    double probabilidadError = 0.01;
     string ruidosa = aplicarRuido(hamming, probabilidadError);
-    cout << "[Ruido] Trama con ruido (p=" << probabilidadError << "): " << ruidosa << endl;
+    cout << "[Ruido] Trama ruidosa (p=" << probabilidadError << "): " << ruidosa << endl;
+
+    // TRANSMISIÓN
+    enviarTramaPorSocket(ruidosa, "127.0.0.1", puerto);
 
     return 0;
 }
