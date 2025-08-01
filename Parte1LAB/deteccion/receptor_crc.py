@@ -1,3 +1,5 @@
+import socket
+
 def custom_crc32(data):
     crc = 0xFFFFFFFF
     poly = 0x04C11DB7
@@ -34,8 +36,21 @@ def verify_crc(data_ascii, crc_received_bin):
     else:
         print("❌ Error detectado. Trama descartada.")
 
-if __name__ == "__main__":
-    trama = input("Ingrese la trama completa (binario de datos + CRC): ").strip()
+def start_server():
+    host = "127.0.0.1"
+    port = 5050
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((host, port))
+    server.listen(1)
+
+    print(f"📡 Receptor CRC escuchando en {host}:{port}...")
+
+    conn, addr = server.accept()
+    print(f"🔗 Conexión establecida desde {addr}")
+
+    trama = conn.recv(8192).decode().strip()
+    print(f"📥 Trama recibida: {trama}")
 
     if len(trama) < 40 or len(trama) % 8 != 0:
         print("⚠️ Trama inválida. Verifique longitud.")
@@ -44,3 +59,9 @@ if __name__ == "__main__":
         crc_bin = trama[-32:]
         data_ascii = bin_to_ascii(data_bin)
         verify_crc(data_ascii, crc_bin)
+
+    conn.close()
+    server.close()
+
+if __name__ == "__main__":
+    start_server()
